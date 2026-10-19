@@ -1,12 +1,12 @@
 // Paste the config object from Firebase console → Project settings → Your apps → Web app.
 // These values are safe to publish: access is protected by your login + firestore.rules.
 export const firebaseConfig = {
-  apiKey: "PASTE_HERE",
-  authDomain: "PASTE_HERE.firebaseapp.com",
-  projectId: "PASTE_HERE",
-  storageBucket: "PASTE_HERE.appspot.com",
-  messagingSenderId: "PASTE_HERE",
-  appId: "PASTE_HERE"
+  apiKey: "AIzaSyCWgJYpNt3t8vb6Cr9lMrY7wjNlmZ78f90",
+  authDomain: "household-ledger-ce5d9.firebaseapp.com",
+  projectId: "household-ledger-ce5d9",
+  storageBucket: "household-ledger-ce5d9.firebasestorage.app",
+  messagingSenderId: "1001178322680",
+  appId: "1:1001178322680:web:5ed50808a2f478f735cd0d"
 };
 
 // Login emails: each person signs in with initials + password.
