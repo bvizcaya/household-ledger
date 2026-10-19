@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Who can see and change what. Paste this into Firebase console → Firestore Database → Rules → Publish.
+//   BV  = lender, pays the companies, manages bills and loan terms
+//   OO  = borrower
+//   CK  = roommate (bills only)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email in ['bv@ledger.house', 'oo@ledger.house', 'ck@ledger.house'];
+    }
+    function me() { return request.auth.token.email.split('@')[0]; }
+    function isBV() { return signedIn() && me() == 'bv'; }
+    function isOO() { return signedIn() && me() == 'oo'; }
+    // The Gmail importer signs in as bot@ledger.house. It can only fill in bill amounts.
+    function isBot() { return request.auth != null && request.auth.token.email == 'bot@ledger.house'; }
+    function botFields() { return ['billId', 'month', 'amount', 'actual', 'dueDate', 'source', 'emailDate']; }
+
+    // Payment info (Venmo / Apple Cash). Everyone reads; you edit your own, BV can set up records.
+    match /members/{person} {
+      allow read: if signedIn();
+      allow write: if signedIn() && (me() == person || isBV());
+    }
+
+    // The list of house bills. Everyone reads; only BV adds, edits or deletes bills.
+    match /bills/{billId} {
+      allow read: if signedIn();
+      allow write: if isBV();
+    }
+
+    // Each bill's month: amount, who has paid, paid-to-company. Any roommate can update.
+    match /billMonths/{id} {
+      allow read, write: if signedIn();
+      // The importer may add or change amounts and due dates, never who-paid checkmarks.
+      allow create: if isBot() && request.resource.data.keys().hasOnly(botFields());
+      allow update: if isBot() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(botFields());
+    }
+
+    // Year-end rounding settlements: everyone reads; only BV records them.
+    match /roundingSettlements/{id} {
+      allow read: if signedIn();
+      allow write: if isBV();
+    }
+
+    // Loan terms: BV and OO read; only BV changes. CK can't see the loan at all.
+    match /loan/{docId} {
+      allow read: if isBV() || isOO();
+      allow write: if isBV();
+    }
+
+    // Loan payments: OO adds unconfirmed payments; BV confirms, edits or deletes.
+    match /loanPayments/{payId} {
+      allow read: if isBV() || isOO();
+      allow create: if isBV()
+        || (isOO() && request.resource.data.confirmed == false && request.resource.data.by == 'oo');
+      allow update: if isBV();
+      allow delete: if isBV() || (isOO() && resource.data.confirmed == false);
+    }
+
+    // Budgets and savings goals are private: only the owner reads or writes them.
+    // CK has no budget, and BV cannot see OO's budget.
+    match /budgets/{person} {
+      allow read, write: if signedIn() && me() == person && person != 'ck';
+      match /expenses/{expId} {
+        allow read, write: if signedIn() && me() == person && person != 'ck';
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
