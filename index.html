@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Household Ledger</title>
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.png">
+<script>
+  // Apply the saved Appearance choice before the page paints (no flash).
+  try { const t = localStorage.getItem("ledger.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+/* iOS-style system: grouped background, inset rounded sections, SF type, system colors, frosted tab bar. */
+:root{
+  --bg:#F2F2F7; --surface:#FFFFFF; --surface2:#FFFFFF; --sunk:rgba(118,118,128,.12);
+  --ink:#000000; --muted:rgba(60,60,67,.6); --faint:rgba(60,60,67,.3); --line:rgba(60,60,67,.18);
+  --accent:#248A3D; --accent-ink:#FFFFFF; --accent-soft:rgba(52,199,89,.16);
+  --good:#34C759; --good-ink:#248A3D; --warn:#FF9500; --warn-ink:#C93400; --bad:#FF3B30;
+  --bar:rgba(249,249,249,.82); --hud:rgba(30,30,30,.86); --hud-ink:#FFFFFF;
+  --sf:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  --sf-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  --who-bv:#AF52DE; --who-oo:#FF3B30; --who-ck:#007AFF;
+  --sf-rounded:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --radius:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1C1C1E; --surface2:#2C2C2E; --sunk:rgba(118,118,128,.24);
+  --ink:#FFFFFF; --muted:rgba(235,235,245,.6); --faint:rgba(235,235,245,.3); --line:rgba(84,84,88,.6);
+  --accent:#30D158; --accent-ink:#00230C; --accent-soft:rgba(48,209,88,.2);
+  --good:#30D158; --good-ink:#30D158; --warn:#FF9F0A; --warn-ink:#FF9F0A; --bad:#FF453A;
+  --bar:rgba(22,22,24,.8); --hud:rgba(58,58,60,.9); --hud-ink:#FFFFFF; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1C1C1E; --surface2:#2C2C2E; --sunk:rgba(118,118,128,.24);
+  --ink:#FFFFFF; --muted:rgba(235,235,245,.6); --faint:rgba(235,235,245,.3); --line:rgba(84,84,88,.6);
+  --accent:#30D158; --accent-ink:#00230C; --accent-soft:rgba(48,209,88,.2);
+  --good:#30D158; --good-ink:#30D158; --warn:#FF9F0A; --warn-ink:#FF9F0A; --bad:#FF453A;
+  --bar:rgba(22,22,24,.8); --hud:rgba(58,58,60,.9); --hud-ink:#FFFFFF; color-scheme:dark}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sf);font-size:17px;line-height:1.35;letter-spacing:-.01em;padding-top:env(safe-area-inset-top,0px);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px calc(110px + env(safe-area-inset-bottom,0px))}
+.num{font-variant-numeric:tabular-nums}
+
+/* Large title header */
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-block:28px 14px}
+h1{font-family:var(--sf-display);font-weight:700;font-size:34px;letter-spacing:.01em;margin:0;line-height:1.1}
+h2{font-family:var(--sf-display);font-weight:600;font-size:20px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.eyebrow{font-size:13px;font-weight:400;color:var(--muted);letter-spacing:-.005em}
+.badge{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#8E8E93;color:#fff;font-weight:600;font-size:14px;letter-spacing:.02em;flex:none}
+
+.badge[data-who="bv"]{background:var(--who-bv)} .badge[data-who="oo"]{background:var(--who-oo)} .badge[data-who="ck"]{background:var(--who-ck)}
+
+.roundhead{padding-top:12px;border-top:.5px solid var(--line)}
+.roundrow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-block:6px}
+#roundBox{display:flex;flex-direction:column;gap:6px;margin-top:-6px}
+
+/* Bottom tab bar */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:15;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;
+  padding:6px max(8px,env(safe-area-inset-left,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-right,0px));
+  background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--line)}
+nav.tabs button{display:flex;flex-direction:column;align-items:center;gap:2px;font:500 10px var(--sf);letter-spacing:.01em;color:var(--muted);background:none;border:0;padding:4px 0 6px;cursor:pointer;max-width:120px;justify-self:center;width:100%}
+nav.tabs button svg{width:26px;height:26px}
+nav.tabs button[aria-selected="true"]{color:var(--accent)}
+
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--accent-soft);outline-offset:1px}
+
+/* Sections */
+section.panel{display:flex;flex-direction:column;gap:22px}
+.card{background:var(--surface);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.muted{color:var(--muted)} .small{font-size:15px}
+.small.muted,.foot{font-size:13px;color:var(--muted);line-height:1.4}
+
+/* Hero numbers (SF Rounded, like Wallet & Fitness) */
+.big{font-family:var(--sf-rounded);font-weight:700;font-size:44px;letter-spacing:-.01em;line-height:1;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--sunk);border-radius:12px;padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.stat b{font-family:var(--sf-rounded);font-size:clamp(14px,4.2vw,19px);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;order:2}
+.stat b#billNextDue,.stat b#loanNext{white-space:normal}
+.stat span{font-size:12px;color:var(--muted);order:1}
+
+.bar{height:8px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--good);border-radius:99px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.bar.thin{height:6px}
+.bar.thin i{background:var(--accent)}
+
+/* Status capsules */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.pill{display:inline-flex;align-items:center;font-size:13px;font-weight:600;padding:4px 10px;border-radius:99px;background:var(--sunk);color:var(--muted)}
+.pill.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good-ink)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn-ink)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+
+/* Inset grouped list rows */
+ul.list{list-style:none;margin:0 -16px;padding:0;display:flex;flex-direction:column}
+ul.list li{display:flex;align-items:center;gap:12px;padding:12px 16px;position:relative;min-width:0}
+ul.list li+li::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--line)}
+ul.list .grow{flex:1;min-width:0}
+ul.list li.empty{margin:0 16px}
+.amt{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Forms: iOS fields */
+form.add{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+form.add .full,.full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:400;color:var(--muted);min-width:0}
+input,select{font:400 17px var(--sf);color:var(--ink);background:var(--sunk);border:0;border-radius:10px;padding:11px 12px;width:100%;min-width:0;-webkit-appearance:none;appearance:none;min-height:44px}
+input::placeholder{color:var(--faint)}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238E8E93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+input[type="date"]{min-height:44px}
+
+/* Buttons */
+button.primary{font:600 17px var(--sf);background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:13px 16px;min-height:50px;cursor:pointer;transition:opacity .15s}
+button.primary:active{opacity:.7}
+button.primary:disabled{opacity:.4}
+button.ghost{font:500 15px var(--sf);background:var(--sunk);color:var(--accent);border:0;border-radius:99px;padding:7px 14px;cursor:pointer;min-height:34px;white-space:nowrap}
+button.ghost:active{opacity:.6}
+button.x{background:transparent;border:0;color:var(--faint);font-size:22px;line-height:1;padding:6px 8px;cursor:pointer;border-radius:8px}
+button.destructive{color:var(--bad)}
+
+/* Paid toggles: iOS checkmark circles */
+.check{display:inline-flex;align-items:center;gap:7px;font:500 15px var(--sf);border:0;border-radius:99px;padding:7px 12px 7px 8px;background:var(--sunk);color:var(--ink)}
+button.check{cursor:pointer}
+.check .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--faint);display:inline-grid;place-items:center;font-size:13px;font-weight:700;flex:none;transition:all .15s}
+.check.on{background:color-mix(in srgb,var(--good) 14%,transparent)}
+.check.on .dot{background:var(--good);border-color:var(--good);color:#fff}
+.check .muted{font-size:13px}
+
+/* Month switcher */
+.monthnav{display:flex;align-items:center;gap:4px;background:var(--sunk);border-radius:99px;padding:2px}
+.monthnav button.ghost{background:transparent;padding:4px 10px;font-size:20px;line-height:1;min-height:30px}
+.monthnav b{min-width:112px;text-align:center;font-size:15px;font-weight:600}
+
+/* Budget table */
+table.plan{width:100%;border-collapse:collapse;font-size:16px}
+table.plan td,table.plan th{padding:11px 4px;border-top:.5px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+table.plan th{font-size:13px;color:var(--muted);border-top:0;font-weight:400;padding-top:0}
+table.plan td:first-child,table.plan th:first-child{text-align:left}
+table.plan td .small.muted{font-size:12px}
+.tablewrap{overflow-x:auto}
+.mini{width:52px;height:5px;background:var(--sunk);border-radius:99px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:8px}
+.mini i{display:block;height:100%;background:var(--accent)} .mini i.over{background:var(--bad)}
+.planedit{display:grid;grid-template-columns:1.6fr 1fr 1.3fr auto;gap:8px;align-items:center}
+
+.empty{padding:18px;border-radius:12px;background:var(--sunk);color:var(--muted);font-size:15px;text-align:center;list-style:none}
+svg.chart text{fill:var(--muted);font:11px var(--sf)}
+
+/* Pay buttons */
+a.paybtn,button.paybtn{display:inline-flex;align-items:center;gap:6px;font:600 16px var(--sf);text-decoration:none;color:var(--accent);background:var(--accent-soft);border:0;border-radius:12px;padding:12px 14px;cursor:pointer;min-height:46px}
+a.paybtn[href^="https://venmo"]{background:#008CFF;color:#fff}
+a.paybtn[href^="sms:"]{background:var(--ink);color:var(--bg)}
+.payblock{display:flex;flex-direction:column;gap:10px}
+
+.due{font-size:13px;font-weight:500;margin-top:2px}
+.due.soon{color:var(--warn-ink)} .due.late{color:var(--bad)} .due.done{color:var(--good-ink)} .due.later{color:var(--muted)}
+.amtin{display:flex;gap:6px;align-items:center}
+.amtin input{width:104px;padding:7px 10px;font-size:16px;min-height:34px}
+.co{color:var(--muted);font-weight:400;font-size:15px} a.co{color:var(--accent);text-decoration:none}
+
+.goal{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:12px;background:var(--sunk)}
+.goal .bar{background:var(--surface)}
+.goal .addrow{display:flex;gap:6px}
+.goal .addrow input{flex:1;padding:7px 10px;font-size:16px;min-height:34px;background:var(--surface)}
+.goal .addrow button.ghost{background:var(--surface)}
+
+/* HUD toast */
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--hud);color:var(--hud-ink);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);padding:11px 18px;border-radius:99px;font-weight:600;font-size:15px;z-index:20;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.18);animation:pop .25s cubic-bezier(.2,.8,.2,1)}
+@keyframes pop{from{opacity:0;transform:translate(-50%,8px) scale(.96)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+.notice{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:15px}
+
+/* Segmented control */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--sunk);border-radius:10px;padding:2px;gap:2px}
+.seg button{font:500 15px var(--sf);border:0;background:transparent;color:var(--ink);border-radius:8px;padding:7px 0;cursor:pointer;min-height:34px}
+.seg button[aria-pressed="true"]{background:var(--surface2);font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+
+/* Login */
+.loginwrap{min-height:100%;display:flex;align-items:center;justify-content:center}
+.login{width:100%;max-width:380px;display:flex;flex-direction:column;gap:22px;padding-block:9vh 40px}
+.appicon{width:76px;height:76px;border-radius:18px;background:linear-gradient(160deg,#34C759,#248A3D);display:grid;place-items:center;box-shadow:0 10px 24px rgba(36,138,61,.3);margin:0 auto}
+.appicon svg{width:40px;height:40px}
+.login h1{text-align:center}
+.login .eyebrow{text-align:center}
+.who{font-size:19px}
+.who button{font:600 17px var(--sf-rounded);padding:9px 0}
+.err{color:var(--bad);font-size:15px;font-weight:500}
+
+@media (max-width:420px){.stat{padding:9px 10px}.stat b{font-size:clamp(14px,4.2vw,17px)}.stat span{font-size:11px}.big{font-size:40px}.planedit{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){.bar i,.check .dot{transition:none}.toast{animation:none}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="wrap loginwrap" id="loginView" hidden>
+  <form class="login" id="loginForm">
+    <div class="appicon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3.8l9 6.7"/><path d="M5.2 9v11h13.6V9"/><text x="12" y="17.6" text-anchor="middle" fill="#fff" stroke="none" font-family="-apple-system,BlinkMacSystemFont,system-ui,sans-serif" font-weight="700" font-size="9">$</text></svg></div>
+    <div><h1>Household Ledger</h1><div class="eyebrow" style="margin-top:6px">Bills, loan and budgets for BV, OO and CK</div></div>
+    <div class="card">
+      <div class="seg who" id="whoPick" role="group" aria-label="Who are you?">
+        <button type="button" data-code="bv" aria-pressed="false">BV</button>
+        <button type="button" data-code="oo" aria-pressed="false">OO</button>
+        <button type="button" data-code="ck" aria-pressed="false">CK</button>
+      </div>
+      <input id="pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required>
+      <div class="err" id="loginErr" hidden></div>
+      <button class="primary" type="submit" id="loginBtn">Sign In</button>
+    </div>
+    <div class="foot" style="text-align:center">Forgot your password? Ask BV to reset it.</div>
+  </form>
+</div>
+
+<!-- APP -->
+<div class="wrap" id="appView" hidden>
+  <header class="top">
+    <div><div class="eyebrow" id="greet">Household Ledger</div><h1 id="pageTitle">Bills</h1></div>
+    <span class="badge" id="meBadge">—</span>
+  </header>
+  <div class="notice" id="setupNotice" hidden></div>
+
+  <!-- BILLS -->
+  <section class="panel" id="tab-bills" hidden>
+    <div class="card">
+      <div class="row between">
+        <h2>House bills</h2>
+        <div class="monthnav"><button class="ghost" data-month="-1" aria-label="Previous month">‹</button><b id="billMonth" class="num"></b><button class="ghost" data-month="1" aria-label="Next month">›</button></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="billTotal">$0</b><span>House total</span></div>
+        <div class="stat"><b id="billMine">$0</b><span>Your share</span></div>
+        <div class="stat"><b id="billNextDue">—</b><span>Next due</span></div>
+      </div>
+      <div id="billSummary" class="chips"></div>
+      <div class="roundhead"><div style="font-weight:600">Rounding balance · <span id="roundYear"></span></div></div>
+      <div id="roundBox"></div>
+      <div class="foot">Each roommate's share of a bill rounds to whole dollars so it's easy to send: over 45¢ rounds up, 45¢ or less rounds down. The extra or missing cents add up here and get settled at the end of the year.</div>
+    </div>
+    <div class="card" id="payCard" hidden>
+      <h2>Pay your share</h2>
+      <div id="payLinks" class="payblock"></div>
+    </div>
+    <div class="card">
+      <div class="row between"><h2>This month</h2>
+        <div class="seg" id="payMethodSeg" role="group" aria-label="Paid with" style="min-width:190px">
+          <button type="button" data-method="Venmo" aria-pressed="true">Venmo</button>
+          <button type="button" data-method="Apple Cash" aria-pressed="false">Apple Cash</button>
+        </div>
+        <select id="payMethod" hidden aria-hidden="true"><option>Venmo</option><option>Apple Cash</option></select>
+      </div>
+      <ul class="list" id="billList"></ul>
+      <div class="foot" id="billHelp"></div>
+    </div>
+  </section>
+
+  <!-- LOAN -->
+  <section class="panel" id="tab-loan" hidden>
+    <div class="card">
+      <div class="row between"><span class="eyebrow" id="loanTitle">Loan</span><span id="loanStatus" class="pill">Loading</span></div>
+      <div><div class="big" id="loanRemaining">$—</div><div class="foot" id="loanRemLabel" style="margin-top:4px">left to pay back</div></div>
+      <div class="bar"><i id="loanBar" style="width:0%"></i></div>
+      <div class="stats">
+        <div class="stat"><b id="loanPaid">$0</b><span>Paid so far</span></div>
+        <div class="stat"><b id="loanNext">—</b><span>Next payment</span></div>
+        <div class="stat"><b id="loanFinish">—</b><span>Paid off by</span></div>
+      </div>
+      <div class="tablewrap"><svg class="chart" id="loanChart" viewBox="0 0 600 170" width="100%" role="img" aria-label="Planned versus actual repayments"></svg></div>
+      <div class="row foot"><span>━ Plan</span><span style="color:var(--accent)">━ Actual</span></div>
+    </div>
+    <div class="card" id="loanPayCard" hidden>
+      <h2>This week's payment</h2>
+      <div id="loanPayLinks" class="payblock"></div>
+    </div>
+    <div class="card">
+      <h2 id="payFormTitle">Record a payment</h2>
+      <form class="add" id="payForm">
+        <label class="f" for="payAmt">Amount<input id="payAmt" type="number" min="0" step="0.01" inputmode="decimal" placeholder="200" required></label>
+        <label class="f" for="payDate">Date<input id="payDate" type="date" required></label>
+        <label class="f" for="payVia">Paid with<select id="payVia"><option>Venmo</option><option>Apple Cash</option></select></label>
+        <label class="f" for="payNote">Note<input id="payNote" type="text" maxlength="120" placeholder="Optional"></label>
+        <button class="primary full" type="submit">Add Payment</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>History</h2>
+      <ul class="list" id="payList"></ul>
+    </div>
+  </section>
+
+  <!-- BUDGET -->
+  <section class="panel" id="tab-budget" hidden>
+    <div class="card">
+      <div class="row between">
+        <h2>This month</h2>
+        <div class="monthnav"><button class="ghost" data-month="-1" aria-label="Previous month">‹</button><b id="spendMonth" class="num"></b><button class="ghost" data-month="1" aria-label="Next month">›</button></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="bIncome">$0</b><span>Take-home</span></div>
+        <div class="stat"><b id="bSpent">$0</b><span>Spent + saved</span></div>
+        <div class="stat"><b id="bLeft">$0</b><span>Left over</span></div>
+      </div>
+      <div class="tablewrap"><table class="plan"><thead><tr><th>Category</th><th>Plan</th><th>Actual</th></tr></thead><tbody id="planBody"></tbody></table></div>
+      <div class="foot">Only you can see your budget. Bills and loan payments fill in automatically.</div>
+    </div>
+    <div class="card">
+      <h2>Savings goals</h2>
+      <div id="goalList" style="display:flex;flex-direction:column;gap:10px"></div>
+      <form class="row" id="goalForm">
+        <input id="goalName" type="text" maxlength="40" placeholder="New goal" aria-label="Goal name" required style="flex:2;min-width:140px">
+        <input id="goalTarget" type="number" min="1" step="1" inputmode="decimal" placeholder="Target $" aria-label="Target amount" required style="flex:1;min-width:90px">
+        <button class="ghost" type="submit">Add</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Log spending</h2>
+      <form class="add" id="expForm">
+        <label class="f" for="expAmt">Amount<input id="expAmt" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required></label>
+        <label class="f" for="expDate">Date<input id="expDate" type="date" required></label>
+        <label class="f" for="expCat">Category<select id="expCat"></select></label>
+        <label class="f" for="expNote">What for<input id="expNote" type="text" maxlength="120" placeholder="Phone bill"></label>
+        <button class="primary full" type="submit">Add</button>
+      </form>
+      <ul class="list" id="expList"></ul>
+    </div>
+    <div class="card">
+      <div class="row between"><h2>My plan</h2><button class="ghost" id="planToggle" type="button">Edit</button></div>
+      <div id="planEditor" hidden style="display:flex;flex-direction:column;gap:10px">
+        <label class="f" for="planIncome">Monthly take-home pay<input id="planIncome" type="number" min="0" step="1" inputmode="decimal"></label>
+        <div class="foot">Categories</div>
+        <div id="planRows" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div class="row"><button class="ghost" type="button" id="planAdd">Add Category</button><button class="primary" type="button" id="planSave" style="flex:1">Save Plan</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="tab-settings" hidden>
+    <div class="card">
+      <h2>Appearance</h2>
+      <div class="seg" id="themeSeg" role="group" aria-label="Appearance">
+        <button type="button" data-theme-choice="system" aria-pressed="true">Automatic</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="foot">Automatic follows your phone's Light or Dark setting.</div>
+    </div>
+
+    <div class="card">
+      <h2>How people pay me</h2>
+      <form class="add" id="handleForm">
+        <label class="f" for="hVenmo">Venmo username<input id="hVenmo" type="text" maxlength="40" placeholder="Jordan-Smith-12" autocapitalize="off" autocorrect="off"></label>
+        <label class="f" for="hPhone">Apple Cash phone or email<input id="hPhone" type="text" maxlength="80" placeholder="402-555-0123" autocapitalize="off"></label>
+        <button class="primary full" type="submit">Save</button>
+      </form>
+    </div>
+
+    <div class="card" id="billsAdmin" hidden>
+      <h2>Manage bills</h2>
+      <ul class="list" id="billAdminList"></ul>
+      <form class="add" id="billForm">
+        <label class="f" for="billName">Bill<input id="billName" type="text" maxlength="60" placeholder="Electric" required></label>
+        <label class="f" for="billCo">Company<input id="billCo" type="text" maxlength="60" placeholder="OPPD"></label>
+        <label class="f" for="billAmt">Amount<input id="billAmt" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Optional"></label>
+        <label class="f" for="billDue">Due day<input id="billDue" type="number" min="1" max="31" placeholder="15"></label>
+        <label class="f full" for="billUrl">Website<input id="billUrl" type="url" maxlength="200" placeholder="https:// (optional)"></label>
+        <button class="primary full" type="submit">Add Bill</button>
+      </form>
+      <div class="foot">Leave Amount blank for bills that change monthly. New bills are split three ways and paid to the company by BV.</div>
+    </div>
+
+    <div class="card" id="loanAdmin" hidden>
+      <h2>Loan terms</h2>
+      <form class="add" id="loanForm">
+        <label class="f" for="lPrincipal">Loan amount<input id="lPrincipal" type="number" min="0" step="1" inputmode="decimal"></label>
+        <label class="f" for="lWeekly">Weekly payment<input id="lWeekly" type="number" min="0" step="1" inputmode="decimal"></label>
+        <label class="f" for="lStart">First payment<input id="lStart" type="date"></label>
+        <label class="f" for="lEnd">Pay off by<input id="lEnd" type="date"></label>
+        <button class="primary full" type="submit">Save Loan Terms</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Account</h2>
+      <form class="row" id="pwForm">
+        <input id="newPw" type="password" minlength="6" autocomplete="new-password" placeholder="New password" aria-label="New password" required style="flex:1;min-width:180px">
+        <button class="ghost" type="submit">Change</button>
+      </form>
+      <button class="ghost destructive" type="button" id="signOut" style="align-self:flex-start">Sign Out</button>
+      <div class="foot">Tip: in Safari tap Share, then <b>Add to Home Screen</b> to open this like an app.</div>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist" id="tabs" aria-label="Sections"></nav>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
